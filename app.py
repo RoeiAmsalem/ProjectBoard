@@ -7,7 +7,7 @@ db.init_db()
 
 @app.route("/")
 def index():
-    projects = db.get_all_projects()
+    projects = db.get_all_projects_with_feature_counts()
     return render_template("index.html", projects=projects)
 
 
@@ -19,8 +19,22 @@ def create_project():
     status = data.get("status", "idea")
     if status not in db.VALID_STATUSES:
         return jsonify({"error": f"status must be one of {db.VALID_STATUSES}"}), 400
-    project = db.create_project(data["name"], data.get("description", ""), status)
+    project = db.create_project(
+        data["name"],
+        data.get("description", ""),
+        status,
+        data.get("notes", ""),
+    )
     return jsonify(project), 201
+
+
+@app.route("/projects/reorder", methods=["PATCH"])
+def reorder_projects():
+    data = request.get_json()
+    if not data or "order" not in data:
+        return jsonify({"error": "order list is required"}), 400
+    db.reorder_projects(data["order"])
+    return jsonify({"success": True})
 
 
 @app.route("/projects/<int:project_id>", methods=["PATCH"])
@@ -62,7 +76,7 @@ def add_feature(project_id):
     status = data.get("status", "idea")
     if status not in db.VALID_STATUSES:
         return jsonify({"error": f"status must be one of {db.VALID_STATUSES}"}), 400
-    feature = db.create_feature(project_id, data["name"], status)
+    feature = db.create_feature(project_id, data["name"], status, data.get("description", ""))
     return jsonify(feature), 201
 
 

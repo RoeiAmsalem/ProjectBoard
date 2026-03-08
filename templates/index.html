@@ -10,10 +10,34 @@
 
 <header>
     <h1>ProjectBoard</h1>
-    <button class="add-btn" onclick="openAddModal()">+ New Project</button>
+    <div class="header-controls">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search projects..." oninput="onSearchChange()">
+        <select class="header-select" id="sortSelect" onchange="onSortChange()">
+            <option value="position">Sort: Manual</option>
+            <option value="name">Sort: Name</option>
+            <option value="date-new">Sort: Newest</option>
+            <option value="date-old">Sort: Oldest</option>
+            <option value="status">Sort: Status</option>
+        </select>
+        <select class="header-select" id="filterSelect" onchange="onFilterChange()">
+            <option value="all">Filter: All</option>
+            <option value="idea">Filter: Idea</option>
+            <option value="developing">Filter: Developing</option>
+            <option value="active">Filter: Active</option>
+        </select>
+        <div class="view-toggle">
+            <button class="view-btn active" data-view="grid" onclick="setView('grid')">Grid</button>
+            <button class="view-btn" data-view="kanban" onclick="setView('kanban')">Kanban</button>
+            <button class="view-btn" data-view="list" onclick="setView('list')">List</button>
+        </div>
+        <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">&#9790;</button>
+        <button class="add-btn" onclick="openAddModal()">+ New Project</button>
+    </div>
 </header>
 
-<div class="grid" id="grid"></div>
+<div id="gridContainer"><div class="grid" id="grid"></div></div>
+<div id="kanbanContainer"></div>
+<div id="listContainer"></div>
 
 <!-- Add Project Modal -->
 <div class="modal-overlay" id="addModal">
@@ -32,6 +56,28 @@
         <div class="modal-actions">
             <button class="btn-cancel" onclick="closeAddModal()">Cancel</button>
             <button class="btn-save" onclick="saveProject()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Feature Modal -->
+<div class="modal-overlay" id="editFeatureModal">
+    <div class="modal">
+        <h2>Edit Feature</h2>
+        <input type="hidden" id="editFeatureId">
+        <label for="editFeatureName">Name</label>
+        <input type="text" id="editFeatureName">
+        <label for="editFeatureDesc">Description</label>
+        <textarea id="editFeatureDesc" placeholder="Feature description"></textarea>
+        <label for="editFeatureStatus">Status</label>
+        <select id="editFeatureStatus">
+            <option value="idea">Idea</option>
+            <option value="developing">Developing</option>
+            <option value="active">Active</option>
+        </select>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeEditFeatureModal()">Cancel</button>
+            <button class="btn-save" onclick="saveEditFeature()">Save</button>
         </div>
     </div>
 </div>
@@ -57,6 +103,10 @@
         <textarea id="panelDesc"></textarea>
     </div>
     <div class="panel-field">
+        <label>Notes</label>
+        <textarea id="panelNotes" style="min-height:80px" placeholder="Add notes..."></textarea>
+    </div>
+    <div class="panel-field">
         <label>Status</label>
         <select id="panelStatus">
             <option value="idea">Idea</option>
@@ -78,6 +128,7 @@
 
         <div class="feature-form" id="featureForm">
             <input type="text" id="featureName" placeholder="Feature name">
+            <textarea id="featureDesc" placeholder="Feature description" style="min-height:50px"></textarea>
             <select id="featureStatus">
                 <option value="idea">Idea</option>
                 <option value="developing">Developing</option>
@@ -94,29 +145,356 @@
 </div>
 
 <script>
-let projects = {{ projects | tojson }};
+// === State ===
+const state = {
+    projects: {{ projects | tojson }},
+    currentView: localStorage.getItem('pb_view') || 'grid',
+    searchQuery: '',
+    sortBy: localStorage.getItem('pb_sort') || 'position',
+    filterStatus: localStorage.getItem('pb_filter') || 'all',
+    theme: localStorage.getItem('pb_theme') || 'dark'
+};
 
-function renderGrid() {
-    const grid = document.getElementById("grid");
-    if (projects.length === 0) {
-        grid.innerHTML = '<div class="empty-state">No projects yet. Click "+ New Project" to get started.</div>';
-        return;
-    }
-    grid.innerHTML = projects.map(p => `
-        <div class="card ${p.status}" onclick="openPanel(${p.id})">
-            <div class="card-name">${esc(p.name)}</div>
-            <div class="card-desc">${esc(p.description)}</div>
-        </div>
-    `).join("");
+let dragSrcId = null;
+
+// === Init ===
+function init() {
+    applyTheme(state.theme);
+    document.getElementById('searchInput').value = state.searchQuery;
+    document.getElementById('sortSelect').value = state.sortBy;
+    document.getElementById('filterSelect').value = state.filterStatus;
+    updateViewButtons();
+    render();
 }
 
+// === Theme ===
+function applyTheme(theme) {
+    if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.getElementById('themeBtn').innerHTML = '&#9728;'; // sun
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+        document.getElementById('themeBtn').innerHTML = '&#9790;'; // moon
+    }
+}
+
+function toggleTheme() {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('pb_theme', state.theme);
+    applyTheme(state.theme);
+}
+
+// === Header controls ===
+function onSearchChange() {
+    state.searchQuery = document.getElementById('searchInput').value.trim().toLowerCase();
+    render();
+}
+
+function onSortChange() {
+    state.sortBy = document.getElementById('sortSelect').value;
+    localStorage.setItem('pb_sort', state.sortBy);
+    render();
+}
+
+function onFilterChange() {
+    state.filterStatus = document.getElementById('filterSelect').value;
+    localStorage.setItem('pb_filter', state.filterStatus);
+    render();
+}
+
+function setView(view) {
+    state.currentView = view;
+    localStorage.setItem('pb_view', view);
+    updateViewButtons();
+    render();
+}
+
+function updateViewButtons() {
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === state.currentView);
+    });
+}
+
+// === Filtering/Sorting ===
+function getFilteredProjects() {
+    let list = [...state.projects];
+
+    // Search
+    if (state.searchQuery) {
+        list = list.filter(p =>
+            p.name.toLowerCase().includes(state.searchQuery) ||
+            (p.description && p.description.toLowerCase().includes(state.searchQuery))
+        );
+    }
+
+    // Filter
+    if (state.filterStatus !== 'all') {
+        list = list.filter(p => p.status === state.filterStatus);
+    }
+
+    // Sort
+    switch (state.sortBy) {
+        case 'name':
+            list.sort((a, b) => a.name.localeCompare(b.name));
+            break;
+        case 'date-new':
+            list.sort((a, b) => b.created_at.localeCompare(a.created_at));
+            break;
+        case 'date-old':
+            list.sort((a, b) => a.created_at.localeCompare(b.created_at));
+            break;
+        case 'status':
+            const order = { idea: 0, developing: 1, active: 2 };
+            list.sort((a, b) => order[a.status] - order[b.status]);
+            break;
+        case 'position':
+        default:
+            list.sort((a, b) => (a.position || 0) - (b.position || 0));
+            break;
+    }
+
+    return list;
+}
+
+// === Central Render ===
+function render() {
+    const containers = ['gridContainer', 'kanbanContainer', 'listContainer'];
+    containers.forEach(id => document.getElementById(id).classList.remove('active-view'));
+
+    switch (state.currentView) {
+        case 'grid':
+            document.getElementById('gridContainer').classList.add('active-view');
+            renderGridView();
+            break;
+        case 'kanban':
+            document.getElementById('kanbanContainer').classList.add('active-view');
+            renderKanban();
+            break;
+        case 'list':
+            document.getElementById('listContainer').classList.add('active-view');
+            renderList();
+            break;
+    }
+}
+
+// === Grid View ===
+function renderGridView() {
+    const grid = document.getElementById("grid");
+    const filtered = getFilteredProjects();
+    if (filtered.length === 0) {
+        grid.innerHTML = '<div class="empty-state">No projects found.</div>';
+        return;
+    }
+    grid.innerHTML = filtered.map(p => {
+        const badge = (p.feature_count || 0) > 0
+            ? `<span class="card-badge">${p.feature_count}</span>` : '';
+        const progress = buildProgressBar(p);
+        return `
+        <div class="card ${p.status}" onclick="openPanel(${p.id})"
+             draggable="true" data-id="${p.id}"
+             ondragstart="onDragStart(event)" ondragover="onDragOver(event)"
+             ondrop="onDropGrid(event)" ondragend="onDragEnd(event)"
+             ondragleave="onDragLeave(event)">
+            ${badge}
+            <div class="card-name">${esc(p.name)}</div>
+            <div class="card-desc">${esc(p.description || '')}</div>
+            ${progress}
+        </div>`;
+    }).join("");
+    applyEntryAnimation(grid.children);
+}
+
+function buildProgressBar(p) {
+    const total = p.feature_count || 0;
+    if (total === 0) return '';
+    const active = p.features_active || 0;
+    const developing = p.features_developing || 0;
+    const pct = Math.round(((active * 100) + (developing * 50)) / (total * 100) * 100);
+    return `<div class="card-progress"><div class="card-progress-fill" style="width:${pct}%"></div></div>`;
+}
+
+// === Kanban View ===
+function renderKanban() {
+    const container = document.getElementById('kanbanContainer');
+    const filtered = getFilteredProjects();
+    const columns = ['active', 'developing', 'idea'];
+    const labels = { idea: 'Idea', developing: 'Developing', active: 'Active' };
+
+    container.innerHTML = `<div class="kanban">${columns.map(status => {
+        const cards = filtered.filter(p => p.status === status);
+        return `
+        <div class="kanban-column ${status}" data-status="${status}"
+             ondragover="onDragOver(event)" ondrop="onDropKanban(event)"
+             ondragleave="onDragLeave(event)">
+            <div class="kanban-column-header">
+                <span>${labels[status]}</span>
+                <span class="col-count">${cards.length}</span>
+            </div>
+            <div class="kanban-column-body">
+                ${cards.map(p => `
+                    <div class="kanban-card" onclick="openPanel(${p.id})"
+                         draggable="true" data-id="${p.id}"
+                         ondragstart="onDragStart(event)" ondragend="onDragEnd(event)">
+                        <div class="kanban-card-name">${esc(p.name)}</div>
+                        <div class="kanban-card-desc">${esc(p.description || '')}</div>
+                        <div class="kanban-card-meta">
+                            <span>${formatDate(p.created_at)}</span>
+                            ${(p.feature_count || 0) > 0 ? `<span class="kanban-card-badge">${p.feature_count} features</span>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+                ${cards.length === 0 ? '<div style="color:var(--text-dim);font-size:13px;padding:8px;">No projects</div>' : ''}
+            </div>
+        </div>`;
+    }).join('')}</div>`;
+
+    const allCards = container.querySelectorAll('.kanban-card');
+    applyEntryAnimation(allCards);
+}
+
+// === List View ===
+function renderList() {
+    const container = document.getElementById('listContainer');
+    const filtered = getFilteredProjects();
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-state">No projects found.</div>';
+        return;
+    }
+
+    container.innerHTML = `
+    <div class="list-view">
+        <table class="list-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Features</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${filtered.map(p => `
+                    <tr class="list-row" onclick="openPanel(${p.id})">
+                        <td style="font-weight:600;color:var(--text-primary)">${esc(p.name)}</td>
+                        <td><span class="status-pill ${p.status}">${capitalize(p.status)}</span></td>
+                        <td>${p.feature_count || 0}</td>
+                        <td>${formatDate(p.created_at)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    </div>`;
+
+    const rows = container.querySelectorAll('.list-row');
+    applyEntryAnimation(rows);
+}
+
+// === Animations ===
+function applyEntryAnimation(elements) {
+    Array.from(elements).forEach((el, i) => {
+        el.classList.remove('card-animate');
+        // Force reflow
+        void el.offsetWidth;
+        el.style.animationDelay = `${i * 0.05}s`;
+        el.classList.add('card-animate');
+    });
+}
+
+// === Drag and Drop ===
+function onDragStart(e) {
+    dragSrcId = e.currentTarget.dataset.id;
+    e.currentTarget.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragSrcId);
+}
+
+function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.currentTarget;
+    target.classList.add('drag-over');
+}
+
+function onDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+function onDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    dragSrcId = null;
+}
+
+async function onDropGrid(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    const targetId = e.currentTarget.dataset.id;
+    if (!dragSrcId || dragSrcId === targetId) return;
+
+    // Reorder in state
+    const srcIdx = state.projects.findIndex(p => p.id == dragSrcId);
+    const tgtIdx = state.projects.findIndex(p => p.id == targetId);
+    if (srcIdx === -1 || tgtIdx === -1) return;
+
+    const [moved] = state.projects.splice(srcIdx, 1);
+    state.projects.splice(tgtIdx, 0, moved);
+
+    // Update positions
+    state.projects.forEach((p, i) => p.position = i);
+    render();
+
+    // Persist
+    const order = state.projects.map(p => p.id);
+    await fetch('/projects/reorder', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ order })
+    });
+}
+
+async function onDropKanban(e) {
+    e.preventDefault();
+    const column = e.currentTarget.closest('.kanban-column');
+    if (!column) return;
+    column.classList.remove('drag-over');
+
+    const newStatus = column.dataset.status;
+    if (!dragSrcId) return;
+
+    const project = state.projects.find(p => p.id == dragSrcId);
+    if (!project || project.status === newStatus) return;
+
+    // Optimistic update
+    project.status = newStatus;
+    render();
+
+    await fetch(`/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ status: newStatus })
+    });
+}
+
+// === Helpers ===
 function esc(s) {
+    if (!s) return '';
     const d = document.createElement("div");
     d.textContent = s;
     return d.innerHTML;
 }
 
-// --- Add project modal ---
+function capitalize(s) {
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function formatDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// === Add project modal ===
 function openAddModal() {
     document.getElementById("newName").value = "";
     document.getElementById("newDesc").value = "";
@@ -139,18 +517,24 @@ async function saveProject() {
         body: JSON.stringify({name, description, status})
     });
     const project = await res.json();
-    projects.unshift(project);
-    renderGrid();
+    // New project won't have feature counts from server — add defaults
+    project.feature_count = 0;
+    project.features_active = 0;
+    project.features_developing = 0;
+    project.features_idea = 0;
+    state.projects.unshift(project);
+    render();
     closeAddModal();
 }
 
-// --- Side panel ---
+// === Side panel ===
 async function openPanel(id) {
-    const project = projects.find(p => p.id === id);
+    const project = state.projects.find(p => p.id === id);
     if (!project) return;
     document.getElementById("panelProjectId").value = id;
     document.getElementById("panelName").value = project.name;
-    document.getElementById("panelDesc").value = project.description;
+    document.getElementById("panelDesc").value = project.description || '';
+    document.getElementById("panelNotes").value = project.notes || '';
     document.getElementById("panelStatus").value = project.status;
     document.getElementById("featureForm").classList.remove("open");
 
@@ -169,28 +553,36 @@ async function updateProject() {
     const id = document.getElementById("panelProjectId").value;
     const name = document.getElementById("panelName").value.trim();
     const description = document.getElementById("panelDesc").value.trim();
+    const notes = document.getElementById("panelNotes").value.trim();
     const status = document.getElementById("panelStatus").value;
     if (!name) return;
     const res = await fetch(`/projects/${id}`, {
         method: "PATCH",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name, description, status})
+        body: JSON.stringify({name, description, notes, status})
     });
     const updated = await res.json();
-    const idx = projects.findIndex(p => p.id == id);
-    if (idx !== -1) projects[idx] = updated;
-    renderGrid();
+    const idx = state.projects.findIndex(p => p.id == id);
+    if (idx !== -1) {
+        // Preserve feature counts
+        updated.feature_count = state.projects[idx].feature_count;
+        updated.features_active = state.projects[idx].features_active;
+        updated.features_developing = state.projects[idx].features_developing;
+        updated.features_idea = state.projects[idx].features_idea;
+        state.projects[idx] = updated;
+    }
+    render();
 }
 
 async function deleteProject() {
     const id = document.getElementById("panelProjectId").value;
     await fetch(`/projects/${id}`, {method: "DELETE"});
-    projects = projects.filter(p => p.id != id);
-    renderGrid();
+    state.projects = state.projects.filter(p => p.id != id);
+    render();
     closePanel();
 }
 
-// --- Features ---
+// === Features ===
 async function loadFeatures(projectId) {
     const res = await fetch(`/projects/${projectId}/features`);
     const features = await res.json();
@@ -200,15 +592,18 @@ async function loadFeatures(projectId) {
 function renderFeatures(features) {
     const list = document.getElementById("featureList");
     if (features.length === 0) {
-        list.innerHTML = '<div style="color:#999;font-size:13px;padding:12px 0;">No features yet.</div>';
+        list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:12px 0;">No features yet.</div>';
         return;
     }
     list.innerHTML = features.map(f => `
         <div class="feature-item" data-id="${f.id}">
             <span class="feature-dot ${f.status}"></span>
-            <span class="feature-name">${esc(f.name)}</span>
+            <div class="feature-info">
+                <span class="feature-name">${esc(f.name)}</span>
+                ${f.description ? `<span class="feature-desc">${esc(f.description)}</span>` : ''}
+            </div>
             <div class="feature-actions">
-                <button onclick="editFeature(${f.id}, '${esc(f.name)}', '${f.status}')" title="Edit">&#9998;</button>
+                <button onclick="editFeature(${f.id}, '${esc(f.name).replace(/'/g, "\\'")}', '${f.status}', '${esc(f.description || '').replace(/'/g, "\\'")}')" title="Edit">&#9998;</button>
                 <button onclick="deleteFeature(${f.id})" title="Delete">&times;</button>
             </div>
         </div>
@@ -218,45 +613,86 @@ function renderFeatures(features) {
 function toggleFeatureForm() {
     document.getElementById("featureForm").classList.toggle("open");
     document.getElementById("featureName").value = "";
+    document.getElementById("featureDesc").value = "";
     document.getElementById("featureStatus").value = "idea";
 }
 
 async function addFeature() {
     const projectId = document.getElementById("panelProjectId").value;
     const name = document.getElementById("featureName").value.trim();
+    const description = document.getElementById("featureDesc").value.trim();
     const status = document.getElementById("featureStatus").value;
     if (!name) return;
     await fetch(`/projects/${projectId}/features`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name, status})
+        body: JSON.stringify({name, description, status})
     });
     toggleFeatureForm();
+
+    // Update feature counts in state
+    const project = state.projects.find(p => p.id == projectId);
+    if (project) {
+        project.feature_count = (project.feature_count || 0) + 1;
+        if (status === 'active') project.features_active = (project.features_active || 0) + 1;
+        else if (status === 'developing') project.features_developing = (project.features_developing || 0) + 1;
+        else project.features_idea = (project.features_idea || 0) + 1;
+    }
+    render();
     await loadFeatures(projectId);
 }
 
-async function editFeature(featureId, currentName, currentStatus) {
-    const name = prompt("Feature name:", currentName);
-    if (name === null) return;
-    const status = prompt("Status (idea / developing / active):", currentStatus);
-    if (status === null || !["idea", "developing", "active"].includes(status)) return;
+function editFeature(featureId, currentName, currentStatus, currentDesc) {
+    document.getElementById("editFeatureId").value = featureId;
+    document.getElementById("editFeatureName").value = currentName;
+    document.getElementById("editFeatureDesc").value = currentDesc || '';
+    document.getElementById("editFeatureStatus").value = currentStatus;
+    document.getElementById("editFeatureModal").classList.add("open");
+}
+
+function closeEditFeatureModal() {
+    document.getElementById("editFeatureModal").classList.remove("open");
+}
+
+async function saveEditFeature() {
+    const featureId = document.getElementById("editFeatureId").value;
+    const name = document.getElementById("editFeatureName").value.trim();
+    const description = document.getElementById("editFeatureDesc").value.trim();
+    const status = document.getElementById("editFeatureStatus").value;
+    if (!name) return;
     await fetch(`/features/${featureId}`, {
         method: "PATCH",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name: name.trim(), status})
+        body: JSON.stringify({name, description, status})
     });
+    closeEditFeatureModal();
     const projectId = document.getElementById("panelProjectId").value;
+    await refreshProjectCounts(projectId);
     await loadFeatures(projectId);
 }
 
 async function deleteFeature(featureId) {
     await fetch(`/features/${featureId}`, {method: "DELETE"});
     const projectId = document.getElementById("panelProjectId").value;
+    await refreshProjectCounts(projectId);
     await loadFeatures(projectId);
 }
 
-// Initial render
-renderGrid();
+async function refreshProjectCounts(projectId) {
+    const res = await fetch(`/projects/${projectId}/features`);
+    const features = await res.json();
+    const project = state.projects.find(p => p.id == projectId);
+    if (project) {
+        project.feature_count = features.length;
+        project.features_active = features.filter(f => f.status === 'active').length;
+        project.features_developing = features.filter(f => f.status === 'developing').length;
+        project.features_idea = features.filter(f => f.status === 'idea').length;
+    }
+    render();
+}
+
+// === Init ===
+init();
 </script>
 
 </body>
