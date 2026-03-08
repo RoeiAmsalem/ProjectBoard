@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProjectBoard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/projectboard/static/style.css">
 </head>
 <body>
 
@@ -145,6 +145,9 @@
 </div>
 
 <script>
+// === Config ===
+const BASE = '/projectboard';
+
 // === State ===
 const state = {
     projects: {{ projects | tojson }},
@@ -446,7 +449,7 @@ async function onDropGrid(e) {
 
     // Persist
     const order = state.projects.map(p => p.id);
-    await fetch('/projects/reorder', {
+    await fetch(`${BASE}/projects/reorder`, {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ order })
@@ -469,7 +472,7 @@ async function onDropKanban(e) {
     project.status = newStatus;
     render();
 
-    await fetch(`/projects/${project.id}`, {
+    await fetch(`${BASE}/projects/${project.id}`, {
         method: 'PATCH',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ status: newStatus })
@@ -511,7 +514,7 @@ async function saveProject() {
     const description = document.getElementById("newDesc").value.trim();
     const status = document.getElementById("newStatus").value;
     if (!name) return;
-    const res = await fetch("/projects", {
+    const res = await fetch(`${BASE}/projects`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({name, description, status})
@@ -556,7 +559,7 @@ async function updateProject() {
     const notes = document.getElementById("panelNotes").value.trim();
     const status = document.getElementById("panelStatus").value;
     if (!name) return;
-    const res = await fetch(`/projects/${id}`, {
+    const res = await fetch(`${BASE}/projects/${id}`, {
         method: "PATCH",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({name, description, notes, status})
@@ -576,7 +579,7 @@ async function updateProject() {
 
 async function deleteProject() {
     const id = document.getElementById("panelProjectId").value;
-    await fetch(`/projects/${id}`, {method: "DELETE"});
+    await fetch(`${BASE}/projects/${id}`, {method: "DELETE"});
     state.projects = state.projects.filter(p => p.id != id);
     render();
     closePanel();
@@ -584,7 +587,7 @@ async function deleteProject() {
 
 // === Features ===
 async function loadFeatures(projectId) {
-    const res = await fetch(`/projects/${projectId}/features`);
+    const res = await fetch(`${BASE}/projects/${projectId}/features`);
     const features = await res.json();
     renderFeatures(features);
 }
@@ -623,7 +626,7 @@ async function addFeature() {
     const description = document.getElementById("featureDesc").value.trim();
     const status = document.getElementById("featureStatus").value;
     if (!name) return;
-    await fetch(`/projects/${projectId}/features`, {
+    await fetch(`${BASE}/projects/${projectId}/features`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({name, description, status})
@@ -660,7 +663,7 @@ async function saveEditFeature() {
     const description = document.getElementById("editFeatureDesc").value.trim();
     const status = document.getElementById("editFeatureStatus").value;
     if (!name) return;
-    await fetch(`/features/${featureId}`, {
+    await fetch(`${BASE}/features/${featureId}`, {
         method: "PATCH",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({name, description, status})
@@ -672,14 +675,14 @@ async function saveEditFeature() {
 }
 
 async function deleteFeature(featureId) {
-    await fetch(`/features/${featureId}`, {method: "DELETE"});
+    await fetch(`${BASE}/features/${featureId}`, {method: "DELETE"});
     const projectId = document.getElementById("panelProjectId").value;
     await refreshProjectCounts(projectId);
     await loadFeatures(projectId);
 }
 
 async function refreshProjectCounts(projectId) {
-    const res = await fetch(`/projects/${projectId}/features`);
+    const res = await fetch(`${BASE}/projects/${projectId}/features`);
     const features = await res.json();
     const project = state.projects.find(p => p.id == projectId);
     if (project) {
