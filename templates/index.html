@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProjectBoard</title>
-    <link rel="stylesheet" href="/projectboard/static/style.css">
+    <link rel="stylesheet" href="{{ config['URL_PREFIX'] }}/static/style.css">
 </head>
 <body>
 
@@ -146,7 +146,9 @@
 
 <script>
 // === Config ===
-const BASE = '/projectboard';
+const BASE = window.location.pathname.startsWith('/projectboard')
+    ? '/projectboard'
+    : '';
 
 // === State ===
 const state = {

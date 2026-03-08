@@ -1,7 +1,9 @@
+import os
 from flask import Flask, request, jsonify, render_template
 import database as db
 
 app = Flask(__name__)
+app.config['URL_PREFIX'] = os.environ.get('URL_PREFIX', '')
 db.init_db()
 
 
