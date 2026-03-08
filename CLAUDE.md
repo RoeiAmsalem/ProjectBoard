@@ -92,6 +92,15 @@ pytest test_app.py -v
 
 ---
 
+## Production
+- **VPS:** 89.167.72.245
+- **Service:** project-board
+- **Port:** 8081
+- **Public URL:** http://89.167.72.245/projectboard/
+- **Deploy:** `git push origin main` → `ssh -i ~/.ssh/hetzner_makolet root@89.167.72.245 "cd /opt/project-board && git pull origin main && systemctl restart project-board"`
+
+---
+
 ## Rules for Claude Code
 1. Always read this file before starting any task
 2. Never change the port — always localhost:5001
