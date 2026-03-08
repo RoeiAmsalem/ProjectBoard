@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProjectBoard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+    <h1>ProjectBoard</h1>
+    <button class="add-btn" onclick="openAddModal()">+ New Project</button>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<!-- Add Project Modal -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal">
+        <h2>New Project</h2>
+        <label for="newName">Name</label>
+        <input type="text" id="newName" placeholder="Project name">
+        <label for="newDesc">Description</label>
+        <textarea id="newDesc" placeholder="One-line description"></textarea>
+        <label for="newStatus">Status</label>
+        <select id="newStatus">
+            <option value="idea">Idea</option>
+            <option value="developing">Developing</option>
+            <option value="active">Active</option>
+        </select>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeAddModal()">Cancel</button>
+            <button class="btn-save" onclick="saveProject()">Create</button>
+        </div>
+    </div>
+</div>
+
+<!-- Side Panel Overlay -->
+<div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
+
+<!-- Side Panel -->
+<div class="side-panel" id="sidePanel">
+    <div class="panel-header">
+        <div></div>
+        <button class="panel-close" onclick="closePanel()">&times;</button>
+    </div>
+
+    <input type="hidden" id="panelProjectId">
+
+    <div class="panel-field">
+        <label>Name</label>
+        <input type="text" id="panelName">
+    </div>
+    <div class="panel-field">
+        <label>Description</label>
+        <textarea id="panelDesc"></textarea>
+    </div>
+    <div class="panel-field">
+        <label>Status</label>
+        <select id="panelStatus">
+            <option value="idea">Idea</option>
+            <option value="developing">Developing</option>
+            <option value="active">Active</option>
+        </select>
+    </div>
+
+    <div class="panel-actions">
+        <button class="btn-update" onclick="updateProject()">Save Changes</button>
+        <button class="btn-delete" onclick="deleteProject()">Delete Project</button>
+    </div>
+
+    <div class="features-section">
+        <h3>
+            Features
+            <button class="add-feature-btn" onclick="toggleFeatureForm()">+ Add</button>
+        </h3>
+
+        <div class="feature-form" id="featureForm">
+            <input type="text" id="featureName" placeholder="Feature name">
+            <select id="featureStatus">
+                <option value="idea">Idea</option>
+                <option value="developing">Developing</option>
+                <option value="active">Active</option>
+            </select>
+            <div class="feature-form-actions">
+                <button class="btn-cancel" onclick="toggleFeatureForm()">Cancel</button>
+                <button class="btn-save" onclick="addFeature()">Add</button>
+            </div>
+        </div>
+
+        <div id="featureList"></div>
+    </div>
+</div>
+
+<script>
+let projects = {{ projects | tojson }};
+
+function renderGrid() {
+    const grid = document.getElementById("grid");
+    if (projects.length === 0) {
+        grid.innerHTML = '<div class="empty-state">No projects yet. Click "+ New Project" to get started.</div>';
+        return;
+    }
+    grid.innerHTML = projects.map(p => `
+        <div class="card ${p.status}" onclick="openPanel(${p.id})">
+            <div class="card-name">${esc(p.name)}</div>
+            <div class="card-desc">${esc(p.description)}</div>
+        </div>
+    `).join("");
+}
+
+function esc(s) {
+    const d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+// --- Add project modal ---
+function openAddModal() {
+    document.getElementById("newName").value = "";
+    document.getElementById("newDesc").value = "";
+    document.getElementById("newStatus").value = "idea";
+    document.getElementById("addModal").classList.add("open");
+}
+
+function closeAddModal() {
+    document.getElementById("addModal").classList.remove("open");
+}
+
+async function saveProject() {
+    const name = document.getElementById("newName").value.trim();
+    const description = document.getElementById("newDesc").value.trim();
+    const status = document.getElementById("newStatus").value;
+    if (!name) return;
+    const res = await fetch("/projects", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name, description, status})
+    });
+    const project = await res.json();
+    projects.unshift(project);
+    renderGrid();
+    closeAddModal();
+}
+
+// --- Side panel ---
+async function openPanel(id) {
+    const project = projects.find(p => p.id === id);
+    if (!project) return;
+    document.getElementById("panelProjectId").value = id;
+    document.getElementById("panelName").value = project.name;
+    document.getElementById("panelDesc").value = project.description;
+    document.getElementById("panelStatus").value = project.status;
+    document.getElementById("featureForm").classList.remove("open");
+
+    document.getElementById("panelOverlay").classList.add("open");
+    document.getElementById("sidePanel").classList.add("open");
+
+    await loadFeatures(id);
+}
+
+function closePanel() {
+    document.getElementById("panelOverlay").classList.remove("open");
+    document.getElementById("sidePanel").classList.remove("open");
+}
+
+async function updateProject() {
+    const id = document.getElementById("panelProjectId").value;
+    const name = document.getElementById("panelName").value.trim();
+    const description = document.getElementById("panelDesc").value.trim();
+    const status = document.getElementById("panelStatus").value;
+    if (!name) return;
+    const res = await fetch(`/projects/${id}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name, description, status})
+    });
+    const updated = await res.json();
+    const idx = projects.findIndex(p => p.id == id);
+    if (idx !== -1) projects[idx] = updated;
+    renderGrid();
+}
+
+async function deleteProject() {
+    const id = document.getElementById("panelProjectId").value;
+    await fetch(`/projects/${id}`, {method: "DELETE"});
+    projects = projects.filter(p => p.id != id);
+    renderGrid();
+    closePanel();
+}
+
+// --- Features ---
+async function loadFeatures(projectId) {
+    const res = await fetch(`/projects/${projectId}/features`);
+    const features = await res.json();
+    renderFeatures(features);
+}
+
+function renderFeatures(features) {
+    const list = document.getElementById("featureList");
+    if (features.length === 0) {
+        list.innerHTML = '<div style="color:#999;font-size:13px;padding:12px 0;">No features yet.</div>';
+        return;
+    }
+    list.innerHTML = features.map(f => `
+        <div class="feature-item" data-id="${f.id}">
+            <span class="feature-dot ${f.status}"></span>
+            <span class="feature-name">${esc(f.name)}</span>
+            <div class="feature-actions">
+                <button onclick="editFeature(${f.id}, '${esc(f.name)}', '${f.status}')" title="Edit">&#9998;</button>
+                <button onclick="deleteFeature(${f.id})" title="Delete">&times;</button>
+            </div>
+        </div>
+    `).join("");
+}
+
+function toggleFeatureForm() {
+    document.getElementById("featureForm").classList.toggle("open");
+    document.getElementById("featureName").value = "";
+    document.getElementById("featureStatus").value = "idea";
+}
+
+async function addFeature() {
+    const projectId = document.getElementById("panelProjectId").value;
+    const name = document.getElementById("featureName").value.trim();
+    const status = document.getElementById("featureStatus").value;
+    if (!name) return;
+    await fetch(`/projects/${projectId}/features`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name, status})
+    });
+    toggleFeatureForm();
+    await loadFeatures(projectId);
+}
+
+async function editFeature(featureId, currentName, currentStatus) {
+    const name = prompt("Feature name:", currentName);
+    if (name === null) return;
+    const status = prompt("Status (idea / developing / active):", currentStatus);
+    if (status === null || !["idea", "developing", "active"].includes(status)) return;
+    await fetch(`/features/${featureId}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name: name.trim(), status})
+    });
+    const projectId = document.getElementById("panelProjectId").value;
+    await loadFeatures(projectId);
+}
+
+async function deleteFeature(featureId) {
+    await fetch(`/features/${featureId}`, {method: "DELETE"});
+    const projectId = document.getElementById("panelProjectId").value;
+    await loadFeatures(projectId);
+}
+
+// Initial render
+renderGrid();
+</script>
+
+</body>
+</html>
