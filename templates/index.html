@@ -128,6 +128,7 @@
 
         <div class="feature-form" id="featureForm">
             <input type="text" id="featureName" placeholder="Feature name">
+            <input type="text" id="featureDesc" placeholder="Short description (optional)">
             <select id="featureStatus">
                 <option value="idea">Idea</option>
                 <option value="developing">Developing</option>
@@ -617,18 +618,20 @@ function renderFeatures(features) {
 function toggleFeatureForm() {
     document.getElementById("featureForm").classList.toggle("open");
     document.getElementById("featureName").value = "";
+    document.getElementById("featureDesc").value = "";
     document.getElementById("featureStatus").value = "idea";
 }
 
 async function addFeature() {
     const projectId = document.getElementById("panelProjectId").value;
     const name = document.getElementById("featureName").value.trim();
+    const description = document.getElementById("featureDesc").value.trim();
     const status = document.getElementById("featureStatus").value;
     if (!name) return;
     await fetch(`${BASE}/projects/${projectId}/features`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name, status})
+        body: JSON.stringify({name, description, status})
     });
     toggleFeatureForm();
 
