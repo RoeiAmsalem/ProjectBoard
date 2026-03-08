@@ -221,7 +221,9 @@ header h1 {
     font-size: 20px;
     font-weight: 700;
     margin-bottom: 6px;
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .card .card-desc {
@@ -599,12 +601,14 @@ header h1 {
 /* Feature form (inline) */
 .feature-form {
     display: none;
+    flex-direction: column;
+    gap: 10px;
     padding: 16px 0;
     border-bottom: 1px solid var(--border-subtle);
 }
 
 .feature-form.open {
-    display: block;
+    display: flex;
 }
 
 .feature-form input,
@@ -614,7 +618,7 @@ header h1 {
     border: 1px solid var(--border-secondary);
     border-radius: 8px;
     font-size: 15px;
-    margin-bottom: 10px;
+    margin-bottom: 0;
     font-family: inherit;
     outline: none;
     background: var(--bg-card-surface);
